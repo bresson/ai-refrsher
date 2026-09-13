@@ -1,3 +1,17 @@
+# Update with litellm for more agnostic LLM frontier models
+consider this for later
+```py
+If you'd rather uv manage the whole project (auto-tracks deps in pyproject.toml instead of requirements.txt, handles the venv for you on every run):
+
+bash
+uv init --no-readme .
+uv add litellm
+uv run test_agent.py
+uv run main.py
+```
+
+
+# LIKELY DATED!
 ---
 title: Template Final Assignment
 emoji: 🕵🏻‍♂️
