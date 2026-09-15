@@ -26,7 +26,7 @@ def setup_tracing(project_name: str = "gaia-agent", endpoint: str = "http://loca
     if _tracer_provider is not None:
         return _tracer_provider
 
-    _tracer_provider = register(project_name=project_name, endpoint=endpoint, batch=True)
+    _tracer_provider = register(project_name=project_name, auto_instrument=True, endpoint=endpoint, batch=True)
     LiteLLMInstrumentor().instrument(tracer_provider=_tracer_provider)
     return _tracer_provider
 

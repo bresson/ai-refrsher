@@ -32,14 +32,25 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
     messages.append({"role": "user", "content": user_message})
 
     for _ in range(max_steps):
-        response = completion(model=model, messages=messages, tools=tools)
+        response = completion(
+            model=model,
+            messages=messages,
+            tools=tools,
+            # thinking={"type": "adaptive", "display": "summarized"},
+            # output_config={"effort": "high"},
+        )
+        # print("REASONING_CONTENT:", repr(response.choices[0].message.reasoning_content))
+        # print("THINKING_BLOCKS:", repr(response.choices[0].message.thinking_blocks))
         msg = response.choices[0].message
+        print("FULL_MESSAGE:", msg.model_dump())
 
         # Rebuild the assistant turn as a plain dict rather than appending
         # the raw response object. LiteLLM routes to many different backends
         # (OpenAI, Anthropic, Gemini, ...) and a plain dict is the one shape
         # guaranteed to serialize correctly no matter which provider is live.
-        assistant_turn = {"role": "assistant", "content": msg.content}
+        content = msg.content if isinstance(msg.content, str) else json.dumps(msg.content)
+        assistant_turn = {"role": "assistant", "content": content}
+
         if msg.tool_calls:
             assistant_turn["tool_calls"] = [
                 {

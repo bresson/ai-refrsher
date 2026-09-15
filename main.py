@@ -21,7 +21,14 @@ TOOL_FUNCTIONS = traced_tools(TOOL_FUNCTIONS)
 # project needs to change. Examples: "gpt-4o", "anthropic/claude-sonnet-4-5",
 # "gemini/gemini-2.0-flash". Set the matching *_API_KEY env var for whichever
 # you pick.
-MODEL = "gpt-5.6-luna"
+MODEL = "gpt-5.6-sol"
+
+system_prompt = """
+For any question, you must discern what data needs to be searched!
+DO NOT USE TRAINING DATA in place of data that can be searched, looked up. 
+Never answer from your own knowledge alone, even if you're confident.
+If no applicable tool is available, state "No applicable tool"
+"""
 
 QUESTION_INDEX = 0  # change this to try a different question
 
