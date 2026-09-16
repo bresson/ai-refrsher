@@ -42,7 +42,7 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
         # print("REASONING_CONTENT:", repr(response.choices[0].message.reasoning_content))
         # print("THINKING_BLOCKS:", repr(response.choices[0].message.thinking_blocks))
         msg = response.choices[0].message
-        print("FULL_MESSAGE:", msg.model_dump())
+        # print("FULL_MESSAGE:", msg.model_dump())
 
         # Rebuild the assistant turn as a plain dict rather than appending
         # the raw response object. LiteLLM routes to many different backends
@@ -73,7 +73,8 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
             args = json.loads(call.function.arguments)
 
             if name == "final_answer":
-                return args["answer"]
+                print("REASONING:", args["reasoning"])
+                return args["answer"].strip()
 
             fn = tool_functions.get(name)
             result = fn(**args) if fn else f"Unknown tool: {name}"

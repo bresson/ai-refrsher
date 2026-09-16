@@ -67,12 +67,13 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "answer": {"type": "string", "description": "The final answer."}
+                    "reasoning": {"type": "string", "description": "Brief explanation of how you arrived at the answer."},
+                    "answer": {"type": "string", "description": "The exact final answer value only — no markdown, no explanation, no surrounding text."}
                 },
-                "required": ["answer"],
+                "required": ["reasoning", "answer"],
             },
         },
-    },
+    }
 ]
 
 TOOL_FUNCTIONS = {"web_search": web_search}

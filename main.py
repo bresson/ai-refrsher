@@ -10,9 +10,11 @@ DONT FORGET   phoenix serve
 for local arize phoneix
 """
 import json
+from pathlib import Path
 from agent import run_agent
 from tools import TOOLS, TOOL_FUNCTIONS
 from observability import setup_tracing, traced_tools
+from evaluation import submit_answers
 
 setup_tracing()
 TOOL_FUNCTIONS = traced_tools(TOOL_FUNCTIONS)
@@ -31,14 +33,31 @@ If no applicable tool is available, state "No applicable tool"
 """
 
 QUESTION_INDEX = 0  # change this to try a different question
+USERNAME = "bresson"
+AGENT_CODE = "https://github.com/bresson/ai-refrsher.git"
+CACHE_PATH = Path("answer_cache.json")
 
 if __name__ == "__main__":
     with open("questions.json") as f:
         questions = json.load(f)
 
-    item = questions[QUESTION_INDEX]
-    print("TASK_ID:", item["task_id"])
-    print("QUESTION:", item["question"])
+        item = questions[QUESTION_INDEX]
+        print("TASK_ID:", item["task_id"])
+        print("QUESTION:", item["question"])
 
-    answer = run_agent(MODEL, item["question"], TOOLS, TOOL_FUNCTIONS)
-    print("ANSWER:", answer)
+        answer = run_agent(MODEL, item["question"], TOOLS, TOOL_FUNCTIONS)
+        print("ANSWER:", answer)
+
+        result = submit_answers(
+            username=USERNAME,
+            agent_code=AGENT_CODE,
+            answers_payload=[{"task_id": item["task_id"], "submitted_answer": answer}],
+        )
+        print(result)
+
+        if result.get("correct_count", 0) > 0:
+            cache = json.loads(CACHE_PATH.read_text()) if CACHE_PATH.exists() else {}
+            cache[item["task_id"]] = answer
+            CACHE_PATH.write_text(json.dumps(cache, indent=2))
+        else:
+            print(f"Incorrect. task_id={item['task_id']} answer={answer!r} result={result}")
