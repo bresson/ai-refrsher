@@ -8,6 +8,7 @@ import os
 from opentelemetry import trace
 
 from tavily import TavilyClient
+from litellm import completion as litellm_completion
 
 client = TavilyClient()  # reads TAVILY_API_KEY from env automatically
 
@@ -18,6 +19,10 @@ MAX_CALLS = int(os.environ.get("TAVILY_MAX_CALLS", 900))  # stay under 1,000/mon
 _call_count = 0
 
 tracer = trace.get_tracer("web_search")
+video_tracer = trace.get_tracer("analyze_video")
+
+VIDEO_MODEL = "gemini/gemini-3.6-flash"
+
 
 def web_search(query: str) -> str:
     global _call_count
@@ -44,6 +49,48 @@ def web_search(query: str) -> str:
         return formatted
 
 
+def analyze_video(url: str, question: str) -> str:
+    with video_tracer.start_as_current_span("analyze_video") as span:
+        span.set_attribute("input.value", f"{url} | {question}")
+
+        try:
+            response = litellm_completion(
+                model=VIDEO_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": question},
+                            {"type": "file", "file": {"file_id": url}},
+                        ],
+                    }
+                ],
+            )
+            result = response.choices[0].message.content
+            span.set_attribute("output.value", result)
+            return result
+        except Exception as e:
+            span.record_exception(e)
+            span.set_attribute("output.value", f"error: {e}")
+            return f"[VIDEO_ANALYSIS_FAILED] {e}"
+
+
+FINAL_ANSWER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "final_answer",
+        "description": "Call this when you have the final answer to the task.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reasoning": {"type": "string", "description": "Brief explanation of how you arrived at the answer."},
+                "answer": {"type": "string", "description": "The exact final answer value only — no markdown, no explanation, no surrounding text."}
+            },
+            "required": ["reasoning", "answer"],
+        },
+    },
+}
+
 TOOLS = [
     {
         "type": "function",
@@ -59,21 +106,27 @@ TOOLS = [
             },
         },
     },
+    FINAL_ANSWER_TOOL,
+]
+
+VIDEO_TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "final_answer",
-            "description": "Call this when you have the final answer to the task.",
+            "name": "analyze_video",
+            "description": "Answer a visual question about a YouTube video's content (e.g. counting things shown on screen).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "reasoning": {"type": "string", "description": "Brief explanation of how you arrived at the answer."},
-                    "answer": {"type": "string", "description": "The exact final answer value only — no markdown, no explanation, no surrounding text."}
+                    "url": {"type": "string", "description": "The YouTube video URL."},
+                    "question": {"type": "string", "description": "The specific visual question to answer about the video."}
                 },
-                "required": ["reasoning", "answer"],
+                "required": ["url", "question"],
             },
         },
-    }
+    },
+    FINAL_ANSWER_TOOL,
 ]
 
 TOOL_FUNCTIONS = {"web_search": web_search}
+VIDEO_TOOL_FUNCTIONS = {"analyze_video": analyze_video}

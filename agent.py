@@ -7,10 +7,28 @@ Provider selection happens entirely via the `model` string passed in
 
 import json
 from litellm import completion
+import re
+from tools import TOOL_FUNCTIONS, TOOLS, VIDEO_TOOL_FUNCTIONS, VIDEO_TOOLS
 
-class Agent:
-    def __call__(self, question, **kwargs):
-        return run_agent(MODEL, question, TOOLS, TOOL_FUNCTIONS, **kwargs)
+YOUTUBE_URL_RE = re.compile(r"youtube\.com/watch|youtu\.be/")
+
+AGENT_CONFIGS = {
+    "default": {
+        "model": "gpt-5.6-sol",
+        "tools": TOOLS,
+        "tool_functions": TOOL_FUNCTIONS,
+    },
+    "video": {
+        "model": "gemini/gemini-3.6-flash",
+        "tools": VIDEO_TOOLS,
+        "tool_functions": VIDEO_TOOL_FUNCTIONS,
+    },
+}
+
+def classify(question: str) -> str:
+    if YOUTUBE_URL_RE.search(question):
+        return "video"
+    return "default"
 
 def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_steps=10):
     """Run a tool-calling agent loop until it produces a final answer.
@@ -85,3 +103,16 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
             })
 
     return "No answer produced within step limit."
+
+def agent_answer(question_text: str, file_path: str | None = None) -> str:
+    config = AGENT_CONFIGS[classify(question_text)]
+    return run_agent(
+        model=config["model"],
+        user_message=question_text,
+        tools=config["tools"],
+        tool_functions=config["tool_functions"],
+    )
+
+class Agent:
+    def __call__(self, question, **kwargs):
+        return run_agent(MODEL, question, TOOLS, TOOL_FUNCTIONS, **kwargs)

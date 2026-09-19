@@ -11,7 +11,7 @@ for local arize phoneix
 """
 import json
 from pathlib import Path
-from agent import run_agent
+from agent import agent_answer
 from tools import TOOLS, TOOL_FUNCTIONS
 from observability import setup_tracing, traced_tools
 from evaluation import submit_answers
@@ -21,9 +21,10 @@ TOOL_FUNCTIONS = traced_tools(TOOL_FUNCTIONS)
 
 # Swap this one line to change providers later — nothing else in this
 # project needs to change. Examples: "gpt-4o", "anthropic/claude-sonnet-4-5",
-# "gemini/gemini-2.0-flash". Set the matching *_API_KEY env var for whichever
+# "gemini-3.6-flash". Set the matching *_API_KEY env var for whichever
 # you pick.
 MODEL = "gpt-5.6-sol"
+VID_MODEL="gemini-3.6-flash"
 
 system_prompt = """
 For any question, you must discern what data needs to be searched!
@@ -32,7 +33,7 @@ Never answer from your own knowledge alone, even if you're confident.
 If no applicable tool is available, state "No applicable tool"
 """
 
-QUESTION_INDEX = 0  # change this to try a different question
+QUESTION_INDEX = 1  # change this to try a different question
 USERNAME = "bresson"
 AGENT_CODE = "https://github.com/bresson/ai-refrsher.git"
 CACHE_PATH = Path("answer_cache.json")
@@ -45,7 +46,7 @@ if __name__ == "__main__":
         print("TASK_ID:", item["task_id"])
         print("QUESTION:", item["question"])
 
-        answer = run_agent(MODEL, item["question"], TOOLS, TOOL_FUNCTIONS)
+        answer = agent_answer(item["question"], file_path=None)
         print("ANSWER:", answer)
 
         result = submit_answers(
