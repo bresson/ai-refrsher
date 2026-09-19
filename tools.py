@@ -83,7 +83,9 @@ FINAL_ANSWER_TOOL = {
         "parameters": {
             "type": "object",
             "properties": {
-                "reasoning": {"type": "string", "description": "Brief explanation of how you arrived at the answer."},
+            "reasoning": {
+                "type": "string",
+                "description": "categorize the problem, eg calculation, analytical, quizzical, etc. State insights about the problem space used to arrive at the decision. Include any analysis or potential answers and solutions discarded. Explain your reasoning. use analytical methods such as deductive logic, inference, syllogism, etc ... that you used"            },
                 "answer": {"type": "string", "description": "The exact final answer value only — no markdown, no explanation, no surrounding text."}
             },
             "required": ["reasoning", "answer"],

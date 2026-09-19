@@ -84,7 +84,7 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
         messages.append(assistant_turn)
 
         if not msg.tool_calls:
-            return msg.content
+            return msg.content, None
 
         for call in msg.tool_calls:
             name = call.function.name
@@ -92,7 +92,7 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
 
             if name == "final_answer":
                 print("REASONING:", args["reasoning"])
-                return args["answer"].strip()
+                return args["answer"].strip(), args["reasoning"]
 
             fn = tool_functions.get(name)
             result = fn(**args) if fn else f"Unknown tool: {name}"
@@ -102,7 +102,7 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
                 "content": str(result),
             })
 
-    return "No answer produced within step limit."
+    return "No answer produced within step limit.", None
 
 def agent_answer(question_text: str, file_path: str | None = None) -> str:
     config = AGENT_CONFIGS[classify(question_text)]
