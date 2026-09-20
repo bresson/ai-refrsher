@@ -1,6 +1,8 @@
 import os
 import json
 import requests
+from datasets import load_dataset
+from huggingface_hub import hf_hub_download
 
 DEFAULT_API_URL = "https://agents-course-unit4-scoring.hf.space"
 CACHE_PATH = "answers_cache.json"
@@ -19,6 +21,21 @@ def download_file(task_id: str, file_name: str, api_url: str = DEFAULT_API_URL) 
     with open(file_path, "wb") as f:
         f.write(resp.content)
     return file_path
+
+
+gaia = load_dataset("gaia-benchmark/GAIA", "2023_level1", trust_remote_code=True, split="validation")
+
+def get_file_path(task_id: str) -> str | None:
+    for row in gaia:
+        if row["task_id"] == task_id:
+            if not row["file_name"]:
+                return None
+            return hf_hub_download(
+                repo_id="gaia-benchmark/GAIA",
+                repo_type="dataset",
+                filename=row["file_path"],
+            )
+    return None
 
 """
 One thing not yet wired up: whatever script eventually calls 

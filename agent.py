@@ -8,7 +8,7 @@ Provider selection happens entirely via the `model` string passed in
 import json
 from litellm import completion
 import re
-from tools import TOOL_FUNCTIONS, TOOLS, VIDEO_TOOL_FUNCTIONS, VIDEO_TOOLS
+from tools import VISION_TOOL_FUNCTIONS, TOOL_FUNCTIONS, TOOLS, VIDEO_TOOL_FUNCTIONS, VIDEO_TOOLS, VISION_TOOLS
 
 YOUTUBE_URL_RE = re.compile(r"youtube\.com/watch|youtu\.be/")
 
@@ -18,16 +18,23 @@ AGENT_CONFIGS = {
         "tools": TOOLS,
         "tool_functions": TOOL_FUNCTIONS,
     },
+    "image": {
+        "model": "anthropic/claude-haiku-4-5",
+        "tools": VISION_TOOLS,
+        "tool_functions": VISION_TOOL_FUNCTIONS,
+    },
     "video": {
-        "model": "gemini/gemini-3.6-flash",
+        "model": "anthropic/claude-haiku-4-5",
         "tools": VIDEO_TOOLS,
         "tool_functions": VIDEO_TOOL_FUNCTIONS,
     },
 }
 
-def classify(question: str) -> str:
+def classify(question: str, file_path: str = '') -> str:
     if YOUTUBE_URL_RE.search(question):
         return "video"
+    elif file_path:
+        return 'image'
     return "default"
 
 def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_steps=10):
@@ -105,10 +112,11 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
     return "No answer produced within step limit.", None
 
 def agent_answer(question_text: str, file_path: str | None = None) -> str:
-    config = AGENT_CONFIGS[classify(question_text)]
+    config = AGENT_CONFIGS[classify(question_text, file_path)]
+    user_message = f"{question_text}\n\nImage file path: {file_path}" if file_path else question_text
     return run_agent(
         model=config["model"],
-        user_message=question_text,
+        user_message=user_message,
         tools=config["tools"],
         tool_functions=config["tool_functions"],
     )

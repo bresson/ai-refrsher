@@ -16,7 +16,7 @@ import requests
 from agent import agent_answer
 from tools import TOOLS, TOOL_FUNCTIONS
 from observability import setup_tracing, traced_tools
-from evaluation import submit_answers
+from evaluation import submit_answers, get_file_path
 
 setup_tracing()
 TOOL_FUNCTIONS = traced_tools(TOOL_FUNCTIONS)
@@ -26,9 +26,9 @@ TOOL_FUNCTIONS = traced_tools(TOOL_FUNCTIONS)
 # "gemini-3.6-flash". Set the matching *_API_KEY env var for whichever
 # you pick.
 MODEL = "gpt-5.6-sol"
-VID_MODEL="gemini-3.6-flash"
+VID_MODEL="claude-haiku-4-5"
 TYPESAFE_API_KEY = os.environ["TYPESAFE_API_KEY"]
-CONFIDENCE_THRESHOLD = 0.7 
+CONFIDENCE_THRESHOLD = 0.8
 
 system_prompt = """
 For any question, you must discern what data needs to be searched!
@@ -37,7 +37,7 @@ Never answer from your own knowledge alone, even if you're confident.
 If no applicable tool is available, state "No applicable tool"
 """
 
-QUESTION_INDEX = 2  # change this to try a different question
+QUESTION_INDEX = 3  # change this to try a different question
 USERNAME = "bresson"
 AGENT_CODE = "https://github.com/bresson/ai-refrsher.git"
 CACHE_PATH = Path("answer_cache.json")
@@ -57,6 +57,17 @@ def judge_reasoning(question: str, answer: str, reasoning: str) -> float:
                         "true": "The reasoning clearly justifies the answer",
                         "false": "The reasoning is vague, contradictory, or doesn't support the answer"
                     }
+                },
+                "gap_type": {
+                    "type": "choice",
+                    "instructions": "What kind of gap, if any, exists between the reasoning and the answer?",
+                    "criteria": {
+                        "none": "Reasoning fully supports the answer, no gap",
+                        "incomplete_coverage": "Reasoning doesn't address all relevant cases/branches/parts of the problem",
+                        "unverified_claim": "Reasoning asserts something as fact without checking it",
+                        "contradiction": "Reasoning contradicts itself or the stated answer",
+                        "off_topic": "Reasoning doesn't actually address the question asked"
+                    }
                 }
             }
         },
@@ -73,7 +84,9 @@ if __name__ == "__main__":
         print("TASK_ID:", item["task_id"])
         print("QUESTION:", item["question"])
 
-        answer, reasoning = agent_answer(item["question"], file_path=None)
+        # file_path = download_file(item["task_id"], item["file_name"]) if item.get("file_name") else None
+        file_path = get_file_path(item["task_id"]) if item.get("file_name") else None
+        answer, reasoning = agent_answer(item["question"], file_path)
         print("ANSWER:", answer)
         print('/n--------------------------------/n')
         print("REASONING:", reasoning)

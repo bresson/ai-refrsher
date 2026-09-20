@@ -6,6 +6,7 @@ This is the only file you edit when moving to a new problem
 import logging
 import os
 from opentelemetry import trace
+import base64
 
 from tavily import TavilyClient
 from litellm import completion as litellm_completion
@@ -21,7 +22,8 @@ _call_count = 0
 tracer = trace.get_tracer("web_search")
 video_tracer = trace.get_tracer("analyze_video")
 
-VIDEO_MODEL = "gemini/gemini-3.6-flash"
+VISION_MODEL = "anthropic/claude-haiku-4-5"
+vision_tracer = trace.get_tracer("analyze_image")
 
 
 def web_search(query: str) -> str:
@@ -55,7 +57,7 @@ def analyze_video(url: str, question: str) -> str:
 
         try:
             response = litellm_completion(
-                model=VIDEO_MODEL,
+                model=VISION_MODEL,
                 messages=[
                     {
                         "role": "user",
@@ -73,6 +75,32 @@ def analyze_video(url: str, question: str) -> str:
             span.record_exception(e)
             span.set_attribute("output.value", f"error: {e}")
             return f"[VIDEO_ANALYSIS_FAILED] {e}"
+
+def analyze_image(file_path: str, question: str) -> str:
+    with vision_tracer.start_as_current_span("analyze_image") as span:
+        span.set_attribute("input.value", f"{file_path} | {question}")
+        try:
+            with open(file_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            response = litellm_completion(
+                model=VISION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": question},
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                        ],
+                    }
+                ],
+            )
+            result = response.choices[0].message.content
+            span.set_attribute("output.value", result)
+            return result
+        except Exception as e:
+            span.record_exception(e)
+            span.set_attribute("output.value", f"error: {e}")
+            return f"[IMAGE_ANALYSIS_FAILED] {e}"
 
 
 FINAL_ANSWER_TOOL = {
@@ -130,5 +158,25 @@ VIDEO_TOOLS = [
     FINAL_ANSWER_TOOL,
 ]
 
+VISION_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_image",
+            "description": "Answer a visual question about a local image file (e.g. reading a chess position).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Local path to the image file."},
+                    "question": {"type": "string", "description": "The specific visual question to answer about the image."}
+                },
+                "required": ["file_path", "question"],
+            },
+        },
+    },
+    FINAL_ANSWER_TOOL,
+]
+
+VISION_TOOL_FUNCTIONS = {"analyze_image": analyze_image}
 TOOL_FUNCTIONS = {"web_search": web_search}
 VIDEO_TOOL_FUNCTIONS = {"analyze_video": analyze_video}
