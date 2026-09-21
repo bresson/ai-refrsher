@@ -19,12 +19,12 @@ AGENT_CONFIGS = {
         "tool_functions": TOOL_FUNCTIONS,
     },
     "image": {
-        "model": "anthropic/claude-haiku-4-5",
+        "model": "anthropic/claude-opus-5",
         "tools": VISION_TOOLS,
         "tool_functions": VISION_TOOL_FUNCTIONS,
     },
     "video": {
-        "model": "anthropic/claude-haiku-4-5",
+        "model": "anthropic/claude-opus-5",
         "tools": VIDEO_TOOLS,
         "tool_functions": VIDEO_TOOL_FUNCTIONS,
     },
@@ -37,7 +37,44 @@ def classify(question: str, file_path: str = '') -> str:
         return 'image'
     return "default"
 
-def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_steps=10):
+VERDICT_PREFIX = "[automated verification]"
+
+
+def _work_behind(messages) -> str:
+    """The work standing behind the answer just given: the agent's own narration
+    and the tool output it read, since its last attempt was rejected.
+
+    This is what gets judged. A separate reasoning field only comes back from
+    the provider when thinking is enabled, so the transcript is the reliable
+    source — and it is the actual record of how the answer was reached.
+    """
+    chunk = []
+    for m in reversed(messages):
+        if m["role"] == "user" and str(m.get("content", "")).startswith(VERDICT_PREFIX):
+            break
+        if m.get("reasoning_content"):
+            chunk.append(m["reasoning_content"])
+        if m["role"] == "assistant" and m.get("content"):
+            chunk.append(m["content"])
+        elif m["role"] == "tool":
+            chunk.append(f"tool result: {m['content']}")
+    return "\n\n".join(reversed(chunk))
+
+
+def _verdict(passed: bool, candidate: str, feedback) -> str:
+    """Feedback the agent can act on, and that it won't mistake for the user."""
+    if passed:
+        return f"{VERDICT_PREFIX} answer accepted."
+    return (
+        f"{VERDICT_PREFIX} Your answer was checked against your own working and "
+        f"was not accepted.\nAnswer checked: {candidate[:200]}\nGap found: {feedback}\n"
+        "The user did not write this and has nothing to add — do not ask them "
+        "questions. Close the gap with your tools if you need better information, "
+        "then state your answer again."
+    )
+
+
+def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_steps=5, evaluator=None):
     """Run a tool-calling agent loop until it produces a final answer.
 
     Args:
@@ -47,21 +84,30 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
         tool_functions: Dict mapping tool name -> callable.
         system_prompt: Optional system instructions.
         max_steps: Max tool-call rounds before giving up.
+        evaluator: Optional callable (question, answer, reasoning) -> (passed, feedback).
+            Judged only on a turn where the model stops calling tools: that
+            turn's text is the answer, and the work behind it is the reasoning.
+            A rejection goes back into the transcript and the loop keeps working.
 
     Returns:
-        The agent's final answer as a string.
+        (answer, reasoning, messages). answer is None if no candidate was ever
+        accepted. messages is the full transcript: every step's reasoning and
+        every verdict, in order.
     """
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user_message})
 
+    answer, reasoning = None, None
+
     for _ in range(max_steps):
         response = completion(
             model=model,
             messages=messages,
             tools=tools,
-            # thinking={"type": "adaptive", "display": "summarized"},
+            # tool_choice={"type": "function", "function": {"name": tools[0]["function"]["name"]}},
+            thinking={"type": "adaptive", "display": "summarized"},
             # output_config={"effort": "high"},
         )
         # print("REASONING_CONTENT:", repr(response.choices[0].message.reasoning_content))
@@ -73,8 +119,19 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
         # the raw response object. LiteLLM routes to many different backends
         # (OpenAI, Anthropic, Gemini, ...) and a plain dict is the one shape
         # guaranteed to serialize correctly no matter which provider is live.
-        content = msg.content if isinstance(msg.content, str) else json.dumps(msg.content)
+        if msg.content is None:
+            content = ""
+        elif isinstance(msg.content, str):
+            content = msg.content
+        else:
+            content = json.dumps(msg.content)
         assistant_turn = {"role": "assistant", "content": content}
+
+        # Kept in the transcript when the provider returns it. It is not relied
+        # on: most providers return nothing here unless thinking is enabled.
+        step_reasoning = getattr(msg, "reasoning_content", None)
+        if step_reasoning:
+            assistant_turn["reasoning_content"] = step_reasoning
 
         if msg.tool_calls:
             assistant_turn["tool_calls"] = [
@@ -90,28 +147,41 @@ def run_agent(model, user_message, tools, tool_functions, system_prompt="", max_
             ]
         messages.append(assistant_turn)
 
-        if not msg.tool_calls:
-            return msg.content, None
+        # Still working: run the tools and go round again. Text on a turn that
+        # also calls a tool is narration, not an answer, so nothing is judged.
+        if msg.tool_calls:
+            for call in msg.tool_calls:
+                name = call.function.name
+                args = json.loads(call.function.arguments)
 
-        for call in msg.tool_calls:
-            name = call.function.name
-            args = json.loads(call.function.arguments)
+                fn = tool_functions.get(name)
+                result = fn(**args) if fn else f"Unknown tool: {name}"
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": str(result),
+                })
+            continue
 
-            if name == "final_answer":
-                print("REASONING:", args["reasoning"])
-                return args["answer"].strip(), args["reasoning"]
+        # No tool call: the model is done, so this turn's text is the answer.
+        candidate = content.strip()
+        if not candidate:
+            break
 
-            fn = tool_functions.get(name)
-            result = fn(**args) if fn else f"Unknown tool: {name}"
-            messages.append({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": str(result),
-            })
+        work = _work_behind(messages)
+        if evaluator is None:
+            answer, reasoning = candidate, work
+            break
 
-    return "No answer produced within step limit.", None
+        passed, feedback = evaluator(user_message, candidate, work)
+        messages.append({"role": "user", "content": _verdict(passed, candidate, feedback)})
+        if passed:
+            answer, reasoning = candidate, work
+            break
 
-def agent_answer(question_text: str, file_path: str | None = None) -> str:
+    return answer, reasoning, messages
+
+def agent_answer(question_text: str, file_path: str | None = None, evaluator=None):
     config = AGENT_CONFIGS[classify(question_text, file_path)]
     user_message = f"{question_text}\n\nImage file path: {file_path}" if file_path else question_text
     return run_agent(
@@ -119,6 +189,7 @@ def agent_answer(question_text: str, file_path: str | None = None) -> str:
         user_message=user_message,
         tools=config["tools"],
         tool_functions=config["tool_functions"],
+        evaluator=evaluator,
     )
 
 class Agent:

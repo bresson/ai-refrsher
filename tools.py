@@ -22,7 +22,7 @@ _call_count = 0
 tracer = trace.get_tracer("web_search")
 video_tracer = trace.get_tracer("analyze_video")
 
-VISION_MODEL = "anthropic/claude-haiku-4-5"
+VISION_MODEL = "anthropic/claude-opus-5"
 vision_tracer = trace.get_tracer("analyze_image")
 
 
@@ -106,8 +106,8 @@ def analyze_image(file_path: str, question: str) -> str:
 FINAL_ANSWER_TOOL = {
     "type": "function",
     "function": {
-        "name": "final_answer",
-        "description": "Call this when you have the final answer to the task.",
+        "name": "answer",
+        "description": "Provide your answer to the task, with your reasoning.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -116,7 +116,7 @@ FINAL_ANSWER_TOOL = {
                 "description": "categorize the problem, eg calculation, analytical, quizzical, etc. State insights about the problem space used to arrive at the decision. Include any analysis or potential answers and solutions discarded. Explain your reasoning. use analytical methods such as deductive logic, inference, syllogism, etc ... that you used"            },
                 "answer": {"type": "string", "description": "The exact final answer value only — no markdown, no explanation, no surrounding text."}
             },
-            "required": ["reasoning", "answer"],
+            "required": ["reasoning"],
         },
     },
 }
@@ -136,7 +136,7 @@ TOOLS = [
             },
         },
     },
-    FINAL_ANSWER_TOOL,
+    # FINAL_ANSWER_TOOL,
 ]
 
 VIDEO_TOOLS = [
@@ -155,7 +155,7 @@ VIDEO_TOOLS = [
             },
         },
     },
-    FINAL_ANSWER_TOOL,
+    # FINAL_ANSWER_TOOL,
 ]
 
 VISION_TOOLS = [
@@ -174,7 +174,7 @@ VISION_TOOLS = [
             },
         },
     },
-    FINAL_ANSWER_TOOL,
+    # FINAL_ANSWER_TOOL,
 ]
 
 VISION_TOOL_FUNCTIONS = {"analyze_image": analyze_image}

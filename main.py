@@ -26,9 +26,9 @@ TOOL_FUNCTIONS = traced_tools(TOOL_FUNCTIONS)
 # "gemini-3.6-flash". Set the matching *_API_KEY env var for whichever
 # you pick.
 MODEL = "gpt-5.6-sol"
-VID_MODEL="claude-haiku-4-5"
+VID_MODEL="claude-opus-5"
 TYPESAFE_API_KEY = os.environ["TYPESAFE_API_KEY"]
-CONFIDENCE_THRESHOLD = 0.8
+CONFIDENCE_THRESHOLD = 0.7
 
 system_prompt = """
 For any question, you must discern what data needs to be searched!
@@ -42,7 +42,7 @@ USERNAME = "bresson"
 AGENT_CODE = "https://github.com/bresson/ai-refrsher.git"
 CACHE_PATH = Path("answer_cache.json")
 
-def judge_reasoning(question: str, answer: str, reasoning: str) -> float:
+def judge_reasoning(question: str, answer: str, reasoning: str) -> tuple[float, str]:
     resp = requests.post(
         "https://api.typesafe.ai/v1/systemone",
         headers={"Authorization": f"Bearer {TYPESAFE_API_KEY}"},
@@ -74,7 +74,15 @@ def judge_reasoning(question: str, answer: str, reasoning: str) -> float:
         timeout=15,
     )
     resp.raise_for_status()
-    return resp.json()["answers"]["well_supported"]["noul"]
+    answers = resp.json()["answers"]
+    return answers["well_supported"]["noul"], answers["gap_type"]["choice"]
+
+
+def jev_gate(question: str, answer: str, reasoning: str) -> tuple[bool, str]:
+    """Jev as the agent's critic: pass/fail plus the gap it found to retry on."""
+    confidence, gap_type = judge_reasoning(question, answer, reasoning)
+    print(f"JEV: confidence={confidence:.2f} gap_type={gap_type}")
+    return gap_type == "none", gap_type
 
 if __name__ == "__main__":
     with open("questions.json") as f:
@@ -86,17 +94,17 @@ if __name__ == "__main__":
 
         # file_path = download_file(item["task_id"], item["file_name"]) if item.get("file_name") else None
         file_path = get_file_path(item["task_id"]) if item.get("file_name") else None
-        answer, reasoning = agent_answer(item["question"], file_path)
-        print("ANSWER:", answer)
+        answer, reasoning, messages = agent_answer(item["question"], file_path, evaluator=jev_gate)
+
+        print('/n------------- TRANSCRIPT -------------/n')
+        for m in messages:
+            print(json.dumps(m, indent=2, default=str))
         print('/n--------------------------------/n')
+        print("ANSWER:", answer)
         print("REASONING:", reasoning)
 
-        confidence = judge_reasoning(item["question"], answer, reasoning) if reasoning else None
-        print("JEV_CONFIDENCE:", confidence)
-
-        if confidence is not None and confidence < CONFIDENCE_THRESHOLD:
-            print(f"Jev flagged low confidence ({confidence:.2f}) — not submitting. task_id={item['task_id']}")
-            # inert — automate retry later, per your note
+        if answer is None:
+            print(f"No answer survived Jev within the step limit — not submitting. task_id={item['task_id']}")
         else:
 
             result = submit_answers(
