@@ -31,24 +31,24 @@ def setup_tracing(project_name: str = "gaia-agent", endpoint: str = "http://loca
     return _tracer_provider
 
 
-def traced_tools(tool_functions: dict) -> dict:
-    """Wrap each tool function in its own span.
+# def traced_tools(tool_functions: dict) -> dict:
+#     """Wrap each tool function in its own span.
 
-    LiteLLM instrumentation only sees the LLM call, not local tool
-    execution. This wraps TOOL_FUNCTIONS from the outside, so tools.py
-    itself never needs to know Phoenix exists.
-    """
-    tracer = trace.get_tracer(__name__)
+#     LiteLLM instrumentation only sees the LLM call, not local tool
+#     execution. This wraps TOOL_FUNCTIONS from the outside, so tools.py
+#     itself never needs to know Phoenix exists.
+#     """
+#     tracer = trace.get_tracer(__name__)
 
-    def _wrap(name, fn):
-        def wrapped(**kwargs):
-            with tracer.start_as_current_span(f"tool.{name}") as span:
-                span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.TOOL.value)
-                span.set_attribute("tool.name", name)
-                span.set_attribute("tool.input", str(kwargs))
-                result = fn(**kwargs)
-                span.set_attribute("tool.output", str(result))
-                return result
-        return wrapped
+#     def _wrap(name, fn):
+#         def wrapped(**kwargs):
+#             with tracer.start_as_current_span(f"tool.{name}") as span:
+#                 span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.TOOL.value)
+#                 span.set_attribute("tool.name", name)
+#                 span.set_attribute("tool.input", str(kwargs))
+#                 result = fn(**kwargs)
+#                 span.set_attribute("tool.output", str(result))
+#                 return result
+#         return wrapped
 
-    return {name: _wrap(name, fn) for name, fn in tool_functions.items()}
+#     return {name: _wrap(name, fn) for name, fn in tool_functions.items()}
